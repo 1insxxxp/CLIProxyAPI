@@ -163,6 +163,11 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 		err = newAntigravityStatusErr(httpResp.StatusCode, bodyBytes)
 		return resp, err
 	}
+	if feedbackBody, blocked := helps.AntigravityPromptFeedbackErrorBody(bodyBytes); blocked {
+		reporter.Publish(ctx, helps.ParseAntigravityUsage(bodyBytes))
+		err = statusErr{code: http.StatusBadRequest, msg: string(feedbackBody)}
+		return resp, err
+	}
 
 	// Success
 	if useCredits {
@@ -376,11 +381,21 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 			return resp, chunk.Err
 		}
 		if len(chunk.Payload) > 0 {
+			if feedbackBody, blocked := helps.AntigravityPromptFeedbackErrorBody(chunk.Payload); blocked {
+				reporter.Publish(ctx, helps.ParseAntigravityUsage(chunk.Payload))
+				err = statusErr{code: http.StatusBadRequest, msg: string(feedbackBody)}
+				return cliproxyexecutor.Response{}, err
+			}
 			_, _ = buffer.Write(chunk.Payload)
 			_, _ = buffer.Write([]byte("\n"))
 		}
 	}
 	resp = cliproxyexecutor.Response{Payload: e.convertStreamToNonStream(buffer.Bytes())}
+	if feedbackBody, blocked := helps.AntigravityPromptFeedbackErrorBody(resp.Payload); blocked {
+		reporter.Publish(ctx, helps.ParseAntigravityUsage(resp.Payload))
+		err = statusErr{code: http.StatusBadRequest, msg: string(feedbackBody)}
+		return cliproxyexecutor.Response{}, err
+	}
 
 	resp.Payload = e.resolveWebSearchGroundingURLs(ctx, auth, from, originalPayload, translated, resp.Payload)
 	reporter.Publish(ctx, helps.ParseAntigravityUsage(resp.Payload))

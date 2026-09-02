@@ -3432,7 +3432,7 @@ func TestConvertClaudeRequestToAntigravity_BypassMode_KeepsNonEmptyThinking(t *t
 	validSignature := testAnthropicNativeSignature(t)
 
 	inputJSON := []byte(`{
-		"model": "claude-opus-4-6",
+		"model": "claude-opus-4-6-thinking",
 		"messages": [
 			{
 				"role": "user",
@@ -3449,7 +3449,7 @@ func TestConvertClaudeRequestToAntigravity_BypassMode_KeepsNonEmptyThinking(t *t
 		"thinking": {"type": "enabled", "budget_tokens": 10000}
 	}`)
 
-	output := ConvertClaudeRequestToAntigravity("claude-opus-4-6", inputJSON, false)
+	output := ConvertClaudeRequestToAntigravity("claude-opus-4-6-thinking", inputJSON, false)
 
 	assistantParts := gjson.GetBytes(output, "request.contents.1.parts").Array()
 	if len(assistantParts) != 2 {
@@ -3636,5 +3636,100 @@ func TestConvertClaudeRequestToAntigravityStripsPropertyNames(t *testing.T) {
 	}
 	if !decls.Get("1.parametersJsonSchema.properties.properties").Exists() {
 		t.Errorf("property named properties was lost: %s", decls.Get("1").Raw)
+	}
+}
+
+func TestConvertClaudeRequestToAntigravity_Opus46PlainAliasesDisableThinking(t *testing.T) {
+	for _, requestedModel := range []string{
+		"claude-opus-4-6",
+		"claude-opus-4.6",
+		"claude-opus-4-6-20260201",
+		"claude-opus-4-6(none)",
+		"claude-opus-4.6(0)",
+	} {
+		t.Run(requestedModel, func(t *testing.T) {
+			input := []byte(`{
+				"model":"` + requestedModel + `",
+				"messages":[{"role":"user","content":"hello"}],
+				"thinking":{"type":"enabled","budget_tokens":32000},
+				"max_tokens":4096
+			}`)
+
+			output := ConvertClaudeRequestToAntigravity("claude-opus-4-6-thinking", input, false)
+			config := gjson.GetBytes(output, "request.generationConfig.thinkingConfig")
+			if !config.Exists() {
+				t.Fatalf("thinkingConfig missing: %s", output)
+			}
+			if got := config.Get("thinkingBudget").Int(); got != 0 {
+				t.Fatalf("thinkingBudget = %d, want 0: %s", got, output)
+			}
+			if got := config.Get("includeThoughts"); !got.Exists() || got.Bool() {
+				t.Fatalf("includeThoughts = %s, want false: %s", got.Raw, output)
+			}
+			if strings.Contains(gjson.GetBytes(output, "request.systemInstruction").String(), "Interleaved thinking is enabled") {
+				t.Fatalf("disabled thinking retained the interleaved hint: %s", output)
+			}
+		})
+	}
+}
+
+func TestConvertClaudeRequestToAntigravity_Opus46ExplicitThinkingPreservesBudget(t *testing.T) {
+	for _, requestedModel := range []string{
+		"claude-opus-4-6-thinking",
+		"claude-opus-4.6-thinking",
+	} {
+		t.Run(requestedModel, func(t *testing.T) {
+			input := []byte(`{
+				"model":"` + requestedModel + `",
+				"messages":[{"role":"user","content":"hello"}],
+				"thinking":{"type":"enabled","budget_tokens":8192},
+				"max_tokens":16384
+			}`)
+
+			output := ConvertClaudeRequestToAntigravity("claude-opus-4-6-thinking", input, false)
+			config := gjson.GetBytes(output, "request.generationConfig.thinkingConfig")
+			if got := config.Get("thinkingBudget").Int(); got != 8192 {
+				t.Fatalf("thinkingBudget = %d, want 8192: %s", got, output)
+			}
+			if include := config.Get("includeThoughts"); include.Exists() && !include.Bool() {
+				t.Fatalf("explicit thinking was marked hidden: %s", output)
+			}
+		})
+	}
+}
+
+func TestConvertClaudeRequestToAntigravity_Opus46PlainRemovesThinkingHistory(t *testing.T) {
+	signature := testAnthropicNativeSignature(t)
+	input := []byte(`{
+		"model":"claude-opus-4-6",
+		"messages":[
+			{"role":"user","content":"first"},
+			{"role":"assistant","content":[
+				{"type":"thinking","thinking":"private reasoning","signature":"` + signature + `"},
+				{"type":"redacted_thinking","data":"private redacted reasoning"},
+				{"type":"text","text":"visible answer"},
+				{"type":"tool_use","id":"lookup-call-1","name":"lookup","input":{"q":"x"},"signature":"` + signature + `"}
+			]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"lookup-call-1","content":"result"}]}
+		],
+		"thinking":{"type":"enabled","budget_tokens":32000},
+		"max_tokens":4096
+	}`)
+
+	output := ConvertClaudeRequestToAntigravity("claude-opus-4-6-thinking", input, false)
+	parts := gjson.GetBytes(output, "request.contents.1.parts").Array()
+	if len(parts) != 2 {
+		t.Fatalf("assistant parts = %d, want text + tool call: %s", len(parts), output)
+	}
+	if parts[0].Get("text").String() != "visible answer" {
+		t.Fatalf("visible text was not preserved: %s", output)
+	}
+	if parts[1].Get("functionCall.name").String() != "lookup" {
+		t.Fatalf("tool call was not preserved: %s", output)
+	}
+	for _, part := range parts {
+		if part.Get("thought").Bool() || part.Get("thoughtSignature").Exists() {
+			t.Fatalf("plain Opus retained thinking history or signature: %s", output)
+		}
 	}
 }

@@ -192,7 +192,8 @@ func (a *Applier) normalizeClaudeBudget(budget int, payload []byte, modelInfo *r
 	if modelInfo.Thinking != nil {
 		minBudget = modelInfo.Thinking.Min
 	}
-	if minBudget > 0 && budget >= 0 && budget < minBudget {
+	zeroAllowed := modelInfo.Thinking != nil && modelInfo.Thinking.ZeroAllowed
+	if minBudget > 0 && budget >= 0 && budget < minBudget && !(budget == 0 && zeroAllowed) {
 		// Budget is below minimum, remove thinking config entirely
 		payload, _ = sjson.DeleteBytes(payload, "request.generationConfig.thinkingConfig")
 		return -2, payload

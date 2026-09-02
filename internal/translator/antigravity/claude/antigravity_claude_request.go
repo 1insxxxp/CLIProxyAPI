@@ -20,6 +20,30 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+type opus46ThinkingPolicy uint8
+
+const (
+	opus46ThinkingUnchanged opus46ThinkingPolicy = iota
+	opus46ThinkingDisabled
+	opus46ThinkingExplicit
+)
+
+func resolveOpus46ThinkingPolicy(modelName string, rawJSON []byte) opus46ThinkingPolicy {
+	requestedModel := strings.TrimSpace(gjson.GetBytes(rawJSON, "model").String())
+	if requestedModel == "" {
+		requestedModel = strings.TrimSpace(modelName)
+	}
+	requestedModel = thinking.ParseSuffix(requestedModel).ModelName
+	switch strings.ToLower(requestedModel) {
+	case "claude-opus-4-6", "claude-opus-4.6", "claude-opus-4-6-20260201":
+		return opus46ThinkingDisabled
+	case "claude-opus-4-6-thinking", "claude-opus-4.6-thinking":
+		return opus46ThinkingExplicit
+	default:
+		return opus46ThinkingUnchanged
+	}
+}
+
 func resolveThinkingSignature(modelName, thinkingText, rawSignature string) string {
 	signature, errSignature := resolveThinkingSignatureRequired(context.Background(), modelName, thinkingText, rawSignature)
 	if errSignature != nil {
@@ -308,6 +332,8 @@ func logDroppedAntigravityToolUseSignature(modelName string, messageIndex, conte
 func ConvertClaudeRequestToAntigravity(modelName string, inputRawJSON []byte, _ bool) []byte {
 	enableThoughtTranslate := true
 	rawJSON := inputRawJSON
+	opusThinkingPolicy := resolveOpus46ThinkingPolicy(modelName, rawJSON)
+	disableOpusThinking := opusThinkingPolicy == opus46ThinkingDisabled
 	if shouldBuildAntigravityWebSearchRequest(modelName, rawJSON) {
 		return buildAntigravityWebSearchRequest(modelName, rawJSON)
 	}
@@ -408,7 +434,7 @@ func ConvertClaudeRequestToAntigravity(modelName string, inputRawJSON []byte, _ 
 					contentResult := contentResults[j]
 					contentTypeResult := contentResult.Get("type")
 					if contentTypeResult.Type == gjson.String && contentTypeResult.String() == "thinking" {
-						if originalRole != "assistant" {
+						if originalRole != "assistant" || disableOpusThinking {
 							continue
 						}
 						// Use GetThinkingText to handle wrapped thinking objects
@@ -598,8 +624,11 @@ func ConvertClaudeRequestToAntigravity(modelName string, inputRawJSON []byte, _ 
 						if argsRaw != "" {
 							partJSON := []byte(`{}`)
 
-							signature := resolveToolUseThoughtSignature(modelName, contentResult, true)
-							if pendingDetachedSignature != "" {
+							signature := ""
+							if !disableOpusThinking {
+								signature = resolveToolUseThoughtSignature(modelName, contentResult, true)
+							}
+							if !disableOpusThinking && pendingDetachedSignature != "" {
 								pendingMatchesTool := pendingDetachedTargetKind == "" || pendingDetachedTargetKind == geminiClaudeCarrierAny || pendingDetachedTargetKind == geminiClaudeCarrierFunction
 								if pendingMatchesTool && (signature == "" || signature == sigcompat.GeminiSkipThoughtSignatureValidator) {
 									signature = pendingDetachedSignature
@@ -842,7 +871,7 @@ func ConvertClaudeRequestToAntigravity(modelName string, inputRawJSON []byte, _ 
 	hasTools := toolDeclCount > 0
 	thinkingResult := gjson.GetBytes(rawJSON, "thinking")
 	thinkingType := thinkingResult.Get("type").String()
-	hasThinking := thinkingResult.Exists() && thinkingResult.IsObject() && (thinkingType == "enabled" || thinkingType == "adaptive" || thinkingType == "auto")
+	hasThinking := !disableOpusThinking && thinkingResult.Exists() && thinkingResult.IsObject() && (thinkingType == "enabled" || thinkingType == "adaptive" || thinkingType == "auto")
 	isClaudeThinking := util.IsClaudeThinkingModel(modelName)
 
 	if hasTools && hasThinking && isClaudeThinking {
@@ -913,6 +942,10 @@ func ConvertClaudeRequestToAntigravity(modelName string, inputRawJSON []byte, _ 
 				out, _ = sjson.SetBytes(out, "request.generationConfig.thinkingConfig.thinkingLevel", "high")
 			}
 		}
+	}
+	if disableOpusThinking {
+		out, _ = sjson.SetBytes(out, "request.generationConfig.thinkingConfig.thinkingBudget", 0)
+		out, _ = sjson.SetBytes(out, "request.generationConfig.thinkingConfig.includeThoughts", false)
 	}
 	if v := gjson.GetBytes(rawJSON, "temperature"); v.Exists() && v.Type == gjson.Number {
 		out, _ = sjson.SetBytes(out, "request.generationConfig.temperature", v.Num)
