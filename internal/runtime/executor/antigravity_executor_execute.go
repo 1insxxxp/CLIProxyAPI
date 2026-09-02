@@ -164,7 +164,7 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 		return resp, err
 	}
 	if feedbackBody, blocked := helps.AntigravityPromptFeedbackErrorBody(bodyBytes); blocked {
-		reporter.Publish(ctx, helps.ParseAntigravityUsage(bodyBytes))
+		reporter.PublishFailureWithDetail(ctx, helps.ParseAntigravityUsage(bodyBytes), statusErr{code: http.StatusBadRequest, msg: string(feedbackBody)})
 		err = statusErr{code: http.StatusBadRequest, msg: string(feedbackBody)}
 		return resp, err
 	}
@@ -388,8 +388,8 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 		}
 		if len(chunk.Payload) > 0 {
 			if feedbackBody, blocked := helps.AntigravityPromptFeedbackErrorBody(chunk.Payload); blocked {
-				reporter.Publish(ctx, helps.ParseAntigravityUsage(chunk.Payload))
 				err = statusErr{code: http.StatusBadRequest, msg: string(feedbackBody)}
+				reporter.PublishFailureWithDetail(ctx, helps.ParseAntigravityUsage(chunk.Payload), err)
 				return cliproxyexecutor.Response{}, err
 			}
 			_, _ = buffer.Write(chunk.Payload)
@@ -398,8 +398,8 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 	}
 	resp = cliproxyexecutor.Response{Payload: e.convertStreamToNonStream(buffer.Bytes())}
 	if feedbackBody, blocked := helps.AntigravityPromptFeedbackErrorBody(resp.Payload); blocked {
-		reporter.Publish(ctx, helps.ParseAntigravityUsage(resp.Payload))
 		err = statusErr{code: http.StatusBadRequest, msg: string(feedbackBody)}
+		reporter.PublishFailureWithDetail(ctx, helps.ParseAntigravityUsage(resp.Payload), err)
 		return cliproxyexecutor.Response{}, err
 	}
 

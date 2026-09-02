@@ -204,7 +204,7 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 				continue
 			}
 			if feedbackBody, blocked := helps.AntigravityPromptFeedbackErrorBody(payload); blocked {
-				reporter.Publish(ctx, helps.ParseAntigravityUsage(payload))
+				reporter.PublishFailureWithDetail(ctx, helps.ParseAntigravityUsage(payload), statusErr{code: http.StatusBadRequest, msg: string(feedbackBody)})
 				select {
 				case out <- cliproxyexecutor.StreamChunk{Err: statusErr{code: http.StatusBadRequest, msg: string(feedbackBody)}}:
 				case <-ctx.Done():
