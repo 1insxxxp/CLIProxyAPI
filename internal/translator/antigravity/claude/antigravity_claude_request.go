@@ -33,15 +33,37 @@ func resolveOpus46ThinkingPolicy(modelName string, rawJSON []byte) opus46Thinkin
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(modelName)
 	}
-	requestedModel = thinking.ParseSuffix(requestedModel).ModelName
-	switch strings.ToLower(requestedModel) {
-	case "claude-opus-4-6", "claude-opus-4.6", "claude-opus-4-6-20260201":
-		return opus46ThinkingDisabled
-	case "claude-opus-4-6-thinking", "claude-opus-4.6-thinking":
-		return opus46ThinkingExplicit
-	default:
+	parsedModel := thinking.ParseSuffix(requestedModel)
+	baseModel := strings.ToLower(parsedModel.ModelName)
+	plainAlias := baseModel == "claude-opus-4-6" || baseModel == "claude-opus-4.6" || baseModel == "claude-opus-4-6-20260201"
+	thinkingAlias := baseModel == "claude-opus-4-6-thinking" || baseModel == "claude-opus-4.6-thinking"
+	if !plainAlias && !thinkingAlias {
 		return opus46ThinkingUnchanged
 	}
+	if parsedModel.HasSuffix {
+		if mode, ok := thinking.ParseSpecialSuffix(parsedModel.RawSuffix); ok {
+			if mode == thinking.ModeNone {
+				return opus46ThinkingDisabled
+			}
+			return opus46ThinkingExplicit
+		}
+		if budget, ok := thinking.ParseNumericSuffix(parsedModel.RawSuffix); ok {
+			if budget == 0 {
+				return opus46ThinkingDisabled
+			}
+			return opus46ThinkingExplicit
+		}
+		if _, ok := thinking.ParseLevelSuffix(parsedModel.RawSuffix); ok {
+			return opus46ThinkingExplicit
+		}
+	}
+	if plainAlias {
+		return opus46ThinkingDisabled
+	}
+	if thinkingAlias {
+		return opus46ThinkingExplicit
+	}
+	return opus46ThinkingUnchanged
 }
 
 func resolveThinkingSignature(modelName, thinkingText, rawSignature string) string {

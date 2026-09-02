@@ -63,14 +63,20 @@ func (e *AntigravityExecutor) ExecuteStream(ctx context.Context, auth *cliproxya
 		reporter.UpdateAccessTokenFingerprint(auth)
 	}
 
-	originalTranslated, translated := helps.TranslateRequestPairWithCodexMultiAgentV2(ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, true)
+	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
+	translationOriginalPayload := originalPayload
+	translationPayload := req.Payload
+	if from == sdktranslator.FormatClaude {
+		translationOriginalPayload = antigravityTranslationPayloadWithRequestedModel(translationOriginalPayload, requestedModel)
+		translationPayload = antigravityTranslationPayloadWithRequestedModel(translationPayload, requestedModel)
+	}
+	originalTranslated, translated := helps.TranslateRequestPairWithCodexMultiAgentV2(ctx, opts.Headers, e.cfg, from, to, baseModel, translationOriginalPayload, translationPayload, true)
 
 	translated, err = helps.ApplyThinkingWithSourcePayload(translated, req.Payload, originalPayloadSource, req.Model, from.String(), to.String(), e.Identifier())
 	if err != nil {
 		return nil, err
 	}
 
-	requestedModel := helps.PayloadRequestedModel(opts, req.Model)
 	requestPath := helps.PayloadRequestPath(opts)
 	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, "antigravity", from.String(), "request", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
 	translated = e.obfuscateSensitiveWords(translated)

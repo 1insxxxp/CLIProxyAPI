@@ -456,6 +456,18 @@ func resolveCustomAntigravityBaseURL(auth *cliproxyauth.Auth) string {
 	return ""
 }
 
+func antigravityTranslationPayloadWithRequestedModel(payload []byte, requestedModel string) []byte {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" || len(payload) == 0 || !gjson.ValidBytes(payload) {
+		return payload
+	}
+	updated, errSet := sjson.SetBytes(payload, "model", requestedModel)
+	if errSet != nil {
+		return payload
+	}
+	return updated
+}
+
 func geminiToAntigravity(modelName string, payload []byte, projectID string, derivedSessionIDs ...string) []byte {
 	template := payload
 	template = helps.SetStringIfDifferent(template, "model", modelName)

@@ -3677,6 +3677,8 @@ func TestConvertClaudeRequestToAntigravity_Opus46ExplicitThinkingPreservesBudget
 	for _, requestedModel := range []string{
 		"claude-opus-4-6-thinking",
 		"claude-opus-4.6-thinking",
+		"claude-opus-4-6(8192)",
+		"claude-opus-4.6(high)",
 	} {
 		t.Run(requestedModel, func(t *testing.T) {
 			input := []byte(`{
