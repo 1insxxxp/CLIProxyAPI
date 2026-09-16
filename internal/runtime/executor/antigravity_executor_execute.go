@@ -185,6 +185,11 @@ func (e *AntigravityExecutor) Execute(ctx context.Context, auth *cliproxyauth.Au
 	if useCredits {
 		clearAntigravityCreditsFailureState(auth)
 	}
+	if feedbackErr, blocked := antigravityPromptFeedbackError(bodyBytes); blocked {
+		reporter.Publish(ctx, helps.ParseAntigravityUsage(bodyBytes))
+		err = feedbackErr
+		return resp, err
+	}
 	cacheAntigravityReasoningReplayFromResponse(ctx, replayScope, requestPayload, bodyBytes)
 	bodyBytes = e.resolveWebSearchGroundingURLs(ctx, auth, from, originalPayload, translated, bodyBytes)
 	reporter.Publish(ctx, helps.ParseAntigravityUsage(bodyBytes))
@@ -451,6 +456,11 @@ func (e *AntigravityExecutor) executeClaudeNonStream(ctx context.Context, auth *
 		}
 	}
 	resp = cliproxyexecutor.Response{Payload: e.convertStreamToNonStream(buffer.Bytes())}
+	if feedbackErr, blocked := antigravityPromptFeedbackError(resp.Payload); blocked {
+		reporter.Publish(ctx, helps.ParseAntigravityUsage(resp.Payload))
+		err = feedbackErr
+		return cliproxyexecutor.Response{}, err
+	}
 
 	resp.Payload = e.resolveWebSearchGroundingURLs(ctx, auth, from, originalPayload, translated, resp.Payload)
 	reporter.Publish(ctx, helps.ParseAntigravityUsage(resp.Payload))
