@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -698,6 +699,12 @@ func (h *Handler) buildAuthFileEntryLocked(auth *coreauth.Auth, quotaSupported .
 			entry["quota_probe"] = probe
 		}
 	}
+	if proxyAddress, configured := redactedProxyAddress(auth.ProxyURL); configured {
+		entry["proxy_address"] = proxyAddress
+		entry["proxy_configured"] = true
+	} else {
+		entry["proxy_configured"] = false
+	}
 	if email := authEmail(auth); email != "" {
 		entry["email"] = email
 	}
@@ -833,6 +840,22 @@ func modelQuotaObservationPayload(provider string, states map[string]*coreauth.M
 		observations[model] = quotaObservationPayloadForProvider(provider, state.Quota)
 	}
 	return observations
+}
+
+// redactedProxyAddress returns only the proxy scheme and host/port for safe
+// display in the management list. Userinfo, path, query, and fragment are
+// deliberately excluded because proxy URLs commonly contain credentials.
+func redactedProxyAddress(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.EqualFold(raw, "direct") {
+		return "", false
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", false
+	}
+	return strings.ToLower(parsed.Scheme) + "://" + parsed.Host, true
 }
 
 func authWeightValue(auth *coreauth.Auth) (int64, bool) {
