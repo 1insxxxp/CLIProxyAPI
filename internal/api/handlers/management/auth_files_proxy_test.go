@@ -19,7 +19,7 @@ func TestBuildAuthFileEntryRedactsProxyCredentials(t *testing.T) {
 		},
 	}
 
-	entry := h.buildAuthFileEntry(auth)
+	entry := h.buildAuthFileEntry(auth, authFileQuotaContext{})
 	if got := entry["proxy_address"]; got != "socks5://proxy.example:1080" {
 		t.Fatalf("proxy_address = %#v, want %q", got, "socks5://proxy.example:1080")
 	}
@@ -46,7 +46,7 @@ func TestBuildAuthFileEntryMarksDirectProxy(t *testing.T) {
 		},
 	}
 
-	entry := h.buildAuthFileEntry(auth)
+	entry := h.buildAuthFileEntry(auth, authFileQuotaContext{})
 	if got := entry["proxy_configured"]; got != false {
 		t.Fatalf("proxy_configured = %#v, want false", got)
 	}
