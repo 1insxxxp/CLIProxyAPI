@@ -438,6 +438,14 @@ func antigravityConfiguredUserAgent(auth *cliproxyauth.Auth) string {
 	return raw
 }
 
+func antigravityShouldFallbackUnsupportedLocation(statusCode int, body []byte) bool {
+	if statusCode != http.StatusBadRequest || len(body) == 0 {
+		return false
+	}
+	lower := strings.ToLower(string(body))
+	return strings.Contains(lower, "user location is not supported")
+}
+
 func resolveCustomAntigravityBaseURL(auth *cliproxyauth.Auth) string {
 	if auth == nil {
 		return ""

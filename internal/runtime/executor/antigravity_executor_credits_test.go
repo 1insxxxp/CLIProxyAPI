@@ -225,6 +225,17 @@ func TestClassifyAntigravity429(t *testing.T) {
 	})
 }
 
+func TestAntigravityShouldFallbackUnsupportedLocation(t *testing.T) {
+	body := []byte(`{"error":{"code":400,"message":"User location is not supported for the API use.","status":"FAILED_PRECONDITION"}}`)
+
+	if !antigravityShouldFallbackUnsupportedLocation(http.StatusBadRequest, body) {
+		t.Fatal("antigravityShouldFallbackUnsupportedLocation() = false, want true")
+	}
+	if antigravityShouldFallbackUnsupportedLocation(http.StatusBadRequest, []byte(`{"error":{"status":"INVALID_ARGUMENT"}}`)) {
+		t.Fatal("antigravityShouldFallbackUnsupportedLocation() matched unrelated 400")
+	}
+}
+
 func TestInjectEnabledCreditTypes(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-6","request":{}}`)
 	got := injectEnabledCreditTypes(body)
